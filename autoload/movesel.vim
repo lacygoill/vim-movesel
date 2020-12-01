@@ -1,5 +1,8 @@
 vim9script
 
+# TODO: Once  you've  completely refactored  this  plugin,  in our  vimrc,  move
+# `vim-movesel` from the section "To assimilate" to "Done".
+
 # FIXME:
 # We've modified how to reselect a block when moving one to the left/right.
 # It doesn't work as expected when alternating between the 2 motions.
@@ -28,59 +31,61 @@ vim9script
 
 import Catch from 'lg.vim'
 
+var mode: string
+
 # Interface {{{1
 def movesel#move(dir: string) #{{{2
 # TODO: Make work with a motion?
 # E.g.: `M-x }` moves the visual selection after the next paragraph.
 
-    ResetSelection()
+    UpdateVisualMarks()
 
     if mode() == 'v'
         exe "norm! \<c-v>"
     endif
-    var vmode = mode()
+    mode = mode()
 
-    if vmode == 'V'
-        if ShouldUndojoin(vmode)
-            undojoin | Lines(dir)
+    if mode == 'V'
+        if ShouldUndojoin()
+            undojoin | MoveLines(dir)
         else
-            Lines(dir)
+            MoveLines(dir)
         endif
-    elseif vmode == "\<c-v>"
-        if ShouldUndojoin(vmode)
-            undojoin | Block(dir)
+    elseif mode == "\<c-v>"
+        if ShouldUndojoin()
+            undojoin | MoveBlock(dir)
         else
-            Block(dir)
+            MoveBlock(dir)
         endif
     endif
 enddef
 
 def movesel#duplicate(dir: string) #{{{2
     # Duplicates the selected lines/block of text
-    var vmode = mode()
-    ResetSelection()
+    mode = mode()
+    UpdateVisualMarks()
 
     # Safe return if unsupported
     # TODO: Make this work in visual mode
-    if vmode == 'v'
+    if mode == 'v'
         # Give them back their selection
-        ResetSelection()
+        UpdateVisualMarks()
     endif
 
-    if vmode == 'V'
+    if mode == 'V'
         if dir == 'up' || dir == 'down'
-            DupLines(dir)
+            DuplicateLines(dir)
         else
-            ResetSelection()
+            UpdateVisualMarks()
             echom 'Left and Right duplication not supported for lines'
         endif
-    elseif vmode == "\<c-v>"
-        DupBlock(dir)
+    elseif mode == "\<c-v>"
+        DuplicateBlock(dir)
     endif
 enddef
 #}}}1
 # Core {{{1
-def Lines(dir: string) #{{{2
+def MoveLines(dir: string) #{{{2
     # Logic for moving text selected with visual line mode
 
     # build normal command string to reselect the VisualLine area
@@ -92,7 +97,7 @@ def Lines(dir: string) #{{{2
         # First lines of file, move everything else down
         if line1 == 1
             append(line2, '')
-            ResetSelection()
+            UpdateVisualMarks()
         else
             sil :*m'<-2
             norm! gv
@@ -100,7 +105,7 @@ def Lines(dir: string) #{{{2
     elseif dir == 'down' #{{{
         if line2 == line('$') # Moving down past EOF
             append(line1 - 1, '')
-            ResetSelection()
+            UpdateVisualMarks()
         else
             sil :*m'>+1
             norm! gv
@@ -113,18 +118,18 @@ def Lines(dir: string) #{{{2
                 setline(linenum, ' ' .. line)
             endif
         endfor
-        ResetSelection() #}}}
+        UpdateVisualMarks() #}}}
     elseif dir == 'left' #{{{
         if getline(line1, line2)->match('^[^ \t]') == -1
             for linenum in range(line1, line2)
                 getline(linenum)->substitute('^\s', '', '')->setline(linenum)
             endfor
         endif
-        ResetSelection()
+        UpdateVisualMarks()
     endif #}}}
 enddef
 
-def Block(dir: string) #{{{2
+def MoveBlock(dir: string) #{{{2
     # Logic for moving  a visual block selection, this is  much more complicated
     # than lines  since I have to  be able to part  text in order to  insert the
     # incoming line.
@@ -242,7 +247,7 @@ def Block(dir: string) #{{{2
                         endif
                     endfor
                 endif
-                ResetSelection()
+                UpdateVisualMarks()
             else
                 norm! gvxhPgvhoho
             endif
@@ -310,21 +315,21 @@ def Block(dir: string) #{{{2
     endtry
 enddef
 
-def DupLines(dir: string) #{{{2
+def DuplicateLines(dir: string) #{{{2
     var reselect: string
     if dir == 'up'
         reselect = 'gv'
     elseif dir == 'down'
         reselect = "'[V']"
     else
-        ResetSelection()
+        UpdateVisualMarks()
         return
     endif
 
     exe 'norm! gvyP' .. reselect
 enddef
 
-def DupBlock(dir: string) #{{{2
+def DuplicateBlock(dir: string) #{{{2
     var ve_save = &l:ve
     try
         setl ve=all
@@ -377,7 +382,7 @@ def DupBlock(dir: string) #{{{2
         elseif dir == 'right'
             norm! gvyPgv
         else
-            ResetSelection()
+            UpdateVisualMarks()
         endif
     catch
         Catch()
@@ -387,18 +392,18 @@ def DupBlock(dir: string) #{{{2
 enddef
 #}}}1
 # Util {{{1
-def ResetSelection() #{{{2
+def UpdateVisualMarks() #{{{2
     exe "norm! \egv"
 enddef
 
-def ShouldUndojoin(vmode: string): bool #{{{2
+def ShouldUndojoin(): bool #{{{2
     if changenr() == undotree().seq_last
     && get(b:, '_movesel_state', {})->get('seq_last') == (changenr() - 1)
-    && get(b:, '_movesel_state', {})->get('mode_last') == vmode
+    && get(b:, '_movesel_state', {})->get('mode_last') == mode
         return true
     endif
 
-    b:_movesel_state = {mode_last: vmode, seq_last: undotree().seq_last}
+    b:_movesel_state = {mode_last: mode, seq_last: undotree().seq_last}
     return false
 enddef
 
