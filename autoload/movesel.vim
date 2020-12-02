@@ -3,6 +3,8 @@ vim9script
 # TODO: Once  you've  completely refactored  this  plugin,  in our  vimrc,  move
 # `vim-movesel` from the section "To assimilate" to "Done".
 
+# FIXME: https://github.com/zirrostig/vim-schlepp/issues/11
+
 # FIXME:
 # We've modified how to reselect a block when moving one to the left/right.
 # It doesn't work as expected when alternating between the 2 motions.
@@ -38,12 +40,10 @@ def movesel#move(dir: string) #{{{2
 # TODO: Make work with a motion?
 # E.g.: `M-x }` moves the visual selection after the next paragraph.
 
-    UpdateVisualMarks()
-
-    if mode() == 'v'
-        exe "norm! \<c-v>"
+    if visualmode() == 'v'
+        exe "norm! gv\<c-v>\e"
     endif
-    mode = mode()
+    mode = visualmode()
 
     if mode == 'V'
         if ShouldUndojoin()
@@ -58,6 +58,7 @@ def movesel#move(dir: string) #{{{2
             MoveBlock(dir)
         endif
     endif
+    norm! gv
 enddef
 
 def movesel#duplicate(dir: string) #{{{2
@@ -86,46 +87,58 @@ enddef
 #}}}1
 # Core {{{1
 def MoveLines(dir: string) #{{{2
-    # Logic for moving text selected with visual line mode
-
-    # build normal command string to reselect the VisualLine area
     var line1: number
     var line2: number
     [line1, line2] = [line("'<"), line("'>")]
 
     if dir == 'up' #{{{
-        # First lines of file, move everything else down
+        # if  the selection  includes  the very  first line,  we  can't move  it
+        # further above, but  we can still append an empty  line right after it,
+        # which gives the impression it was moved above
         if line1 == 1
             append(line2, '')
-            UpdateVisualMarks()
         else
             sil :*m'<-2
-            norm! gv
         endif #}}}
     elseif dir == 'down' #{{{
-        if line2 == line('$') # Moving down past EOF
+        # if the selection includes the very last line, we can't move it further
+        # down, but  we can still  append an empty  line right before  it, which
+        # gives the impression it was moved below
+        if line2 == line('$')
             append(line1 - 1, '')
-            UpdateVisualMarks()
         else
             sil :*m'>+1
-            norm! gv
         endif #}}}
     elseif dir == 'right' #{{{
-        for linenum in range(line1, line2)
-            var line = getline(linenum)
-            # Only insert space if the line is not empty
-            if match(line, '^$') == -1
-                setline(linenum, ' ' .. line)
+        for lnum in range(line1, line2)
+            var line = getline(lnum)
+            if line != ''
+                setline(lnum, ' ' .. line)
             endif
-        endfor
-        UpdateVisualMarks() #}}}
+        endfor #}}}
     elseif dir == 'left' #{{{
-        if getline(line1, line2)->match('^[^ \t]') == -1
-            for linenum in range(line1, line2)
-                getline(linenum)->substitute('^\s', '', '')->setline(linenum)
+        # Moving the  selection to the left  means removing a space  in front of
+        # each line.  But  we don't want to  do that if a line  in the selection
+        # starts with a non-whitespace.
+        # Otherwise, watch what would happen:{{{
+        #
+        #     # before
+        #     the
+        #      selection
+        #     ^
+        #     we want this space to be preserved
+        #
+        #     # after
+        #     the
+        #     selection
+        #     ^
+        #     ✘
+        #}}}
+        if AllLinesStartWithWhitespace(line1, line2)
+            for lnum in range(line1, line2)
+                getline(lnum)->substitute('^\s', '', '')->setline(lnum)
             endfor
         endif
-        UpdateVisualMarks()
     endif #}}}
 enddef
 
@@ -138,7 +151,7 @@ def MoveBlock(dir: string) #{{{2
     try
         setl ve=all
 
-        # While '< is always above or equal to '> in linenum, the column it
+        # While  '< is  always above  or  equal to  '>  in lnum,  the column  it
         # references could be the first or last col in the selected block
         var line1: number
         var fcol: number
@@ -240,10 +253,10 @@ def MoveBlock(dir: string) #{{{2
             if left_col == 1
                 exe "norm! gvA \e"
                 if getline(line1, line2)->match('^\s') != -1
-                    for linenum in range(line1, line2)
-                        if getline(linenum)->match('^\s') != -1
-                            getline(linenum)->substitute('^\s', '', '')->setline(linenum)
-                            exe 'norm! ' .. linenum .. 'G' .. right_col .. "|a \e"
+                    for lnum in range(line1, line2)
+                        if getline(lnum)->match('^\s') != -1
+                            getline(lnum)->substitute('^\s', '', '')->setline(lnum)
+                            exe 'norm! ' .. lnum .. 'G' .. right_col .. "|a \e"
                         endif
                     endfor
                 endif
@@ -298,8 +311,8 @@ def MoveBlock(dir: string) #{{{2
         if &selection == 'exclusive' && fcol + foff < lcol + loff
             right_col -= 1
         endif
-        for linenum in range(line1, line2)
-            getline(linenum)->substitute('\s\+$', '', '')->setline(linenum)
+        for lnum in range(line1, line2)
+            getline(lnum)->substitute('\s\+$', '', '')->setline(lnum)
         endfor
         # Take care of trailing space created on lines above or below while
         # moving past them
@@ -351,7 +364,7 @@ def DuplicateBlock(dir: string) #{{{2
         var numlines = (line2 - line1) + 1
         var numcols = (right_col - left_col)
 
-        if dir == 'up'
+        if dir == 'up' #{{{
             if (line1 - numlines) < 1
                 # Insert enough lines to duplicate above
                 for i in range((numlines - line1) + 1)
@@ -362,28 +375,27 @@ def DuplicateBlock(dir: string) #{{{2
             endif
 
             var set_cursor = "\<cmd>call getpos(\"'<\")[1:3]->cursor()\r" .. numlines .. 'k'
-            exe 'norm! gvy' .. set_cursor .. 'Pgv'
-
-        elseif dir == 'down'
+            exe 'norm! gvy' .. set_cursor .. 'Pgv' #}}}
+        elseif dir == 'down' #{{{
             if line2 + numlines >= line('$')
                 for i in ((line2 + numlines) - line('$'))->range()
                     append('$', '')
                 endfor
             endif
-            exe "norm! gvy'>j" .. left_col .. '|Pgv'
-        elseif dir == 'left'
+            exe "norm! gvy'>j" .. left_col .. '|Pgv' #}}}
+        elseif dir == 'left' #{{{
             if numcols > 0
                 exe 'norm! gvyP' .. numcols .. "l\<c-v>"
                     .. (numcols + (&selection == 'exclusive' ? 1 : 0)) .. 'l'
                     .. (numlines - 1) .. 'jo'
             else
                 exe "norm! gvyP\<c-v>" .. (numlines - 1) .. 'jo'
-            endif
-        elseif dir == 'right'
+            endif #}}}
+        elseif dir == 'right' #{{{
             norm! gvyPgv
         else
             UpdateVisualMarks()
-        endif
+        endif #}}}
     catch
         Catch()
     finally
@@ -397,13 +409,24 @@ def UpdateVisualMarks() #{{{2
 enddef
 
 def ShouldUndojoin(): bool #{{{2
+    # We are on the last change.{{{
+    #
+    # We haven't played with `u`, `C-r`, `g+`, `g-`.
+    # Or if we have, we've come back to the latest change.
+    #}}}
     if changenr() == undotree().seq_last
+    # we haven't performed more than 1 change since the last time
     && get(b:, '_movesel_state', {})->get('seq_last') == (changenr() - 1)
+    # we haven't changed the type of the visual mode
     && get(b:, '_movesel_state', {})->get('mode_last') == mode
         return true
     endif
 
     b:_movesel_state = {mode_last: mode, seq_last: undotree().seq_last}
     return false
+enddef
+
+def AllLinesStartWithWhitespace(line1: number, line2: number): bool #{{{2
+    return getline(line1, line2)->match('^\S') == -1
 enddef
 

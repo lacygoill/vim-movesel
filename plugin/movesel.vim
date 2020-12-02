@@ -23,17 +23,16 @@ import MapMeta from 'lg/map.vim'
 # expand  the selection  and release  CTRL  a little  too late;  which leads  to
 # unexpected motions of text.
 #}}}
-sil! call MapMeta('h', '<cmd>call movesel#move("left")<cr>', 'x', 'u')
-sil! call MapMeta('j', '<cmd>call movesel#move("down")<cr>', 'x', 'u')
-sil! call MapMeta('k', '<cmd>call movesel#move("up")<cr>', 'x', 'u')
-sil! call MapMeta('l', '<cmd>call movesel#move("right")<cr>', 'x', 'u')
+sil! MapMeta('h', '<c-\><c-n><cmd>call movesel#move("left")<cr>', 'x', 'u')
+sil! MapMeta('j', '<c-\><c-n><cmd>call movesel#move("down")<cr>', 'x', 'u')
+sil! MapMeta('k', '<c-\><c-n><cmd>call movesel#move("up")<cr>', 'x', 'u')
+sil! MapMeta('l', '<c-\><c-n><cmd>call movesel#move("right")<cr>', 'x', 'u')
 
 # Duplication
 
-xno <unique> mdk <cmd>call movesel#duplicate('up')<cr>
-xno <unique> mdj <cmd>call movesel#duplicate('down')<cr>
-
-# works only visual blocks
-xno <unique> mdh <cmd>call movesel#duplicate('left')<cr>
-xno <unique> mdl <cmd>call movesel#duplicate('right')<cr>
+xno <unique> mdk <c-\><c-n><cmd>call movesel#duplicate('up')<cr>
+xno <unique> mdj <c-\><c-n><cmd>call movesel#duplicate('down')<cr>
+# works only on visual blocks
+xno <unique> mdh <c-\><c-n><cmd>call movesel#duplicate('left')<cr>
+xno <unique> mdl <c-\><c-n><cmd>call movesel#duplicate('right')<cr>
 
