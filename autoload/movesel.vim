@@ -3,13 +3,11 @@ vim9script
 # TODO: Once  you've  completely refactored  this  plugin,  in our  vimrc,  move
 # `vim-movesel` from the section "To assimilate" to "Done".
 
-# FIXME: https://github.com/zirrostig/vim-schlepp/issues/11
-
 # FIXME:
 # We've modified how to reselect a block when moving one to the left/right.
 # It doesn't work as expected when alternating between the 2 motions.
 #
-# Make some tests with bulleted lists whose 1st line is prefixed by `-`.
+# Make some tests with bulleted lists whose 1st line is prefixed with `•` (or `-`?).
 #
 # Also, try to move this diagram (left, right):
 #
@@ -34,59 +32,77 @@ vim9script
 import Catch from 'lg.vim'
 
 var mode: string
+var dir: string
 
 # Interface {{{1
-def movesel#move(dir: string) #{{{2
+def movesel#move(adir: string) #{{{2
 # TODO: Make work with a motion?
 # E.g.: `M-x }` moves the visual selection after the next paragraph.
 
-    if visualmode() == 'v'
-        exe "norm! gv\<c-v>\e"
-    endif
-    mode = visualmode()
+    [mode, dir] = [mode(), adir]
 
-    if mode == 'V'
-        if ShouldUndojoin()
-            undojoin | MoveLines(dir)
-        else
-            MoveLines(dir)
-        endif
-    elseif mode == "\<c-v>"
-        if ShouldUndojoin()
-            undojoin | MoveBlock(dir)
-        else
-            MoveBlock(dir)
-        endif
+    if mode == 'v' && line('v') != line('.')
+        Error('Cannot move characterwise selection when it''s multiline')
+        return
     endif
-    norm! gv
+
+    exe "norm! \e"
+
+    var ve_save = &ve
+    var fen_save = &l:fen
+
+    try
+        set ve=all
+        setl nofen
+
+        if ShouldUndojoin()
+            undojoin | Move()
+        else
+            Move()
+        endif
+    catch
+        Catch()
+    finally
+        exe "norm! \e"
+        &l:fen = fen_save
+        norm! gvzv
+        &ve = ve_save
+    endtry
 enddef
 
-def movesel#duplicate(dir: string) #{{{2
-    # Duplicates the selected lines/block of text
-    mode = mode()
-    UpdateVisualMarks()
+def movesel#duplicate(adir: string) #{{{2
+    [mode, dir] = [mode(), adir]
 
-    # Safe return if unsupported
-    # TODO: Make this work in visual mode
-    if mode == 'v'
-        # Give them back their selection
-        UpdateVisualMarks()
+    if mode == 'v' && line('v') != line('.')
+        Error('Cannot duplicate characterwise selection when it''s multiline')
+        return
     endif
+
+    exe "norm! \e"
 
     if mode == 'V'
         if dir == 'up' || dir == 'down'
-            DuplicateLines(dir)
+            DuplicateLines()
         else
-            UpdateVisualMarks()
-            echom 'Left and Right duplication not supported for lines'
+            Error('Left and Right duplication not supported for lines')
         endif
-    elseif mode == "\<c-v>"
-        DuplicateBlock(dir)
+    else
+        # FIXME: Select a word (characterwise), and press `mdh`.
+        # The final selection is completely wrong.
+        DuplicateBlock()
     endif
 enddef
 #}}}1
 # Core {{{1
-def MoveLines(dir: string) #{{{2
+def Move() #{{{2
+    if mode == 'V'
+        MoveLines()
+    else
+        MoveBlock()
+    endif
+enddef
+
+def MoveLines() #{{{2
     var line1: number
     var line2: number
     [line1, line2] = [line("'<"), line("'>")]
@@ -140,272 +156,240 @@ def MoveLines(dir: string) #{{{2
             endfor
         endif
     endif #}}}
+
+    norm! gv
 enddef
 
-def MoveBlock(dir: string) #{{{2
-    # Logic for moving  a visual block selection, this is  much more complicated
-    # than lines  since I have to  be able to part  text in order to  insert the
-    # incoming line.
+def MoveBlock() #{{{2
+    # While  '< is  always above  or  equal to  '>  in lnum,  the column  it
+    # references could be the first or last col in the selected block
+    var line1: number
+    var fcol: number
+    var foff: number
+    var line2: number
+    var lcol: number
+    var loff: number
+    var left_col: number
+    var right_col: number
+    var _: any
+    [_, line1, fcol, foff] = getpos("'<")
+    [_, line2, lcol, loff] = getpos("'>")
+    [left_col, right_col] = sort([fcol + foff, lcol + loff], 'N')
 
-    var ve_save = &l:ve
-    try
-        setl ve=all
-
-        # While  '< is  always above  or  equal to  '>  in lnum,  the column  it
-        # references could be the first or last col in the selected block
-        var line1: number
-        var fcol: number
-        var foff: number
-        var line2: number
-        var lcol: number
-        var loff: number
-        var left_col: number
-        var right_col: number
-        var _: any
-        [_, line1, fcol, foff] = getpos("'<")
-        [_, line2, lcol, loff] = getpos("'>")
-        [left_col, right_col] = sort([fcol + foff, lcol + loff], 'N')
-        if &selection == 'exclusive' && fcol + foff < lcol + loff
-            right_col -= 1
+    if dir == 'up' #{{{
+        if line1 == 1
+            append(0, '')
         endif
-
-        if dir == 'up' #{{{
-            if line1 == 1 # First lines of file
-                append(0, '')
-            endif
-            norm! gvxkPgvkoko
-            #}}}
-        elseif dir == 'down' #{{{
-            if line2 == line('$') # Moving down past EOF
-                append('$', '')
-            endif
-            norm! gvxjPgvjojo
-            #}}}
-        elseif dir == 'right' #{{{
-            var col1: number
-            var col2: number
-            [col1, col2] = sort([left_col, right_col], 'N')
-            var old_width = (getline('.') .. '  ')
-                ->matchstr('\%' .. col1 .. 'c.*\%' .. col2 .. 'c.')
-                ->strchars(1)
-
-            # Original code:
-            #
-            #     norm! gvxpgvlolo
-            #             ^^
-            # Why did we replace `xp` with `xlP`?{{{
-            #
-            # Try to  move a block  to the right, beyond  the end of  the lines,
-            # while there  is a multibyte character  before the 1st line  of the
-            # block (example: a bulleted list):
-            #
-            #    - hello
-            #    - people
-            #
-            # It fails because of `xp`.
-            #
-            # Solution:
-            #     xp → xlP
-            #
-            # Interesting:
-            #
-            # Set  've'   to  'all',   and  select   “hello“  in   a  visual
-            # characterwise selection, then press `xp` (it will work):
-            #
-            #    - hello
-            #
-            # Reselect “hello“  in a  visual blockwise selection,  and press
-            # `xp` (it will fail).
-            # Now, reselect, and press `xlp`: it will also fail, but not because
-            # it didn't move the block, but  because it moved it 1 character too
-            # far.  Why?
-            #}}}
-            norm! gvxlPgvlolo
-
-            # Problem:
-            # Try to move the “join, delete, sort“ block to the right.
-            # At one point, it misses a character (last `e` in `delete`).
-            #
-            #    - join
-            #    - delete
-            #    - sort
-            #
-            # Solution:
-            # After reselecting  the text (`gv`),  check that the length  of the
-            # block is the  same as before.  If it's shorter,  press `l` as many
-            # times as necessary.
-
-            [col1, col2] = [col("'<"), col("'>")]
-            var new_width = getline('.')
-                ->matchstr('\%' .. col1 .. 'c.*\%' .. col2 .. 'c.')
-                ->strchars(1)
-            if old_width > new_width
-                exe 'norm! ' .. (old_width - new_width) .. 'l'
-            endif
-            #}}}
-        elseif dir == 'left' #{{{
-            var vcol1: number
-            var vcol2: number
-            [vcol1, vcol2] = sort([virtcol("'<"), virtcol("'>")], 'N')
-            var old_width = (getline('.') .. '  ')
-                ->matchstr('\%' .. vcol1 .. 'v.*\%' .. vcol2 .. 'v.')
-                ->strchars(1)
-            if left_col == 1
-                exe "norm! gvA \e"
-                if getline(line1, line2)->match('^\s') != -1
-                    for lnum in range(line1, line2)
-                        if getline(lnum)->match('^\s') != -1
-                            getline(lnum)->substitute('^\s', '', '')->setline(lnum)
-                            exe 'norm! ' .. lnum .. 'G' .. right_col .. "|a \e"
-                        endif
-                    endfor
-                endif
-                UpdateVisualMarks()
-            else
-                norm! gvxhPgvhoho
-            endif
-            # Problem:
-            # Select “join“ and “delete“, then press `xhPgv`, it works.
-            #
-            #         -join
-            #         -delete
-            #
-            # Now, repeat  the same commands;  this time, it will  fail, because
-            # `gv` doesn't reselect the right area:
-            #
-            #         -join
-            #         -delete
-            #
-            # As soon as the visual  selection cross the multibyte character, it
-            # loses some characters.
-            #
-            # Solution:
-            # After reselecting  the text (`gv`),  check that the length  of the
-            # block is the  same as before.  If it's shorter,  press `h` as many
-            # times as necessary.
-            #
-            # FIXME:
-            # Try to move “join, delete, sort“ to the left:
-            #     gvxhPgvhoho
-            #
-            #    - join
-            #    - delete
-            #    - sort
-
-            var col1: number
-            var col2: number
-            [col1, col2] = [col("'<"), col("'>")]
-            var new_width = getline('.')
-                ->matchstr('\%' .. col1 .. 'c.*\%' .. col2 .. 'c.')
-                ->strchars(1)
-            if old_width > new_width
-                exe 'norm! o' .. (old_width - new_width) .. 'ho'
-            endif
-        endif #}}}
-
-        # Strip Whitespace
-        # Need new positions since the visual area has moved
-        [_, line1, fcol, foff] = getpos("'<")
-        [_, line2, lcol, loff] = getpos("'>")
-        [left_col, right_col] = sort([fcol + foff, lcol + loff], 'N')
-        if &selection == 'exclusive' && fcol + foff < lcol + loff
-            right_col -= 1
+        norm! gvxkPgvkoko
+        #}}}
+    elseif dir == 'down' #{{{
+        if line2 == line('$')
+            append('$', '')
         endif
-        for lnum in range(line1, line2)
-            getline(lnum)->substitute('\s\+$', '', '')->setline(lnum)
-        endfor
-        # Take care of trailing space created on lines above or below while
-        # moving past them
-        if dir == 'up'
-            getline(line2 + 1)->substitute('\s\+$', '', '')->setline(line2 + 1)
-        elseif dir == 'down'
-            getline(line1 - 1)->substitute('\s\+$', '', '')->setline(line1 - 1)
+        norm! gvxjPgvjojo
+        #}}}
+    elseif dir == 'right' #{{{
+        var old_width = (getline('.') .. '  ')
+            ->matchstr('\%' .. left_col .. 'c.*\%' .. right_col .. 'c.')
+            ->strchars(1)
+
+        # Original code:
+        #
+        #     norm! gvxpgvlolo
+        #             ^^
+        # Why did we replace `xp` with `xlP`?{{{
+        #
+        # Try to  move a block  to the right, beyond  the end of  the lines,
+        # while there  is a multibyte character  before the 1st line  of the
+        # block:
+        #
+        #    • hello
+        #    • people
+        #
+        # It fails because of `xp`.
+        #
+        # Solution:
+        #
+        #     xp → xlP
+        #
+        # Interesting:
+        #
+        # Set  've'   to  'all',   and  select   “hello“  in   a  visual
+        # characterwise selection, then press `xp` (it will work):
+        #
+        #    • hello
+        #
+        # Reselect “hello“  in a  visual blockwise selection,  and press
+        # `xp` (it will fail).
+        # Now, reselect, and press `xlp`: it will also fail, but not because
+        # it didn't move the block, but  because it moved it 1 character too
+        # far.  Why?
+        #}}}
+        norm! gvxlPgvlolo
+
+        # Problem:
+        # Try to move the “join, delete, sort“ block to the right.
+        # At one point, it misses a character (last `e` in `delete`).
+        #
+        #    • join
+        #    • delete
+        #    • sort
+        #
+        # Solution:
+        # After reselecting  the text (`gv`),  check that the length  of the
+        # block is the  same as before.  If it's shorter,  press `l` as many
+        # times as necessary.
+
+        var col1: number
+        var col2: number
+        [col1, col2] = sort([col("'<"), col("'>")], 'N')
+        var new_width = getline('.')
+            ->matchstr('\%' .. col1 .. 'c.*\%' .. col2 .. 'c.')
+            ->strchars(1)
+        if old_width > new_width
+            exe 'norm! ' .. (old_width - new_width) .. 'l'
         endif
-    catch
-        Catch()
-    finally
-        &l:ve = ve_save
-    endtry
+        #}}}
+    elseif dir == 'left' #{{{
+        # FIXME: https://github.com/zirrostig/vim-schlepp/issues/11
+        var vcol1: number
+        var vcol2: number
+        [vcol1, vcol2] = sort([virtcol("'<"), virtcol("'>")], 'N')
+        var old_width = (getline('.') .. '  ')
+            ->matchstr('\%' .. vcol1 .. 'v.*\%' .. vcol2 .. 'v.')
+            ->strchars(1)
+        if left_col == 1
+            exe "norm! gvA \e"
+            if getline(line1, line2)->match('^\s') != -1
+                for lnum in range(line1, line2)
+                    if getline(lnum)->match('^\s') != -1
+                        getline(lnum)->substitute('^\s', '', '')->setline(lnum)
+                        exe 'norm! ' .. lnum .. 'G' .. right_col .. "|a \e"
+                    endif
+                endfor
+            endif
+            exe "norm! \egv"
+        else
+            norm! gvxhPgvhoho
+        endif
+        # Problem:
+        # Select “join“ and “delete“, then press `xhPgv`, it works.
+        #
+        #         -join
+        #         -delete
+        #
+        # Now, repeat  the same commands;  this time, it will  fail, because
+        # `gv` doesn't reselect the right area:
+        #
+        #         -join
+        #         -delete
+        #
+        # As soon as the visual  selection cross the multibyte character, it
+        # loses some characters.
+        #
+        # Solution:
+        # After reselecting  the text (`gv`),  check that the length  of the
+        # block is the  same as before.  If it's shorter,  press `h` as many
+        # times as necessary.
+        #
+        # FIXME:
+        # Try to move “join, delete, sort“ to the left:
+        #     gvxhPgvhoho
+        #
+        #    - join
+        #    - delete
+        #    - sort
+
+        var col1: number
+        var col2: number
+        [col1, col2] = [col("'<"), col("'>")]
+        var new_width = getline('.')
+            ->matchstr('\%' .. col1 .. 'c.*\%' .. col2 .. 'c.')
+            ->strchars(1)
+        if old_width > new_width
+            exe 'norm! o' .. (old_width - new_width) .. 'ho'
+        endif
+    endif #}}}
+
+    # Strip Whitespace
+    # Need new positions since the visual area has moved
+    [line1, line2] = [line("'<"), line("'>")]
+    for lnum in range(line1, line2)
+        getline(lnum)->substitute('\s\+$', '', '')->setline(lnum)
+    endfor
+    # Take care of trailing space created on lines above or below while
+    # moving past them
+    if dir == 'up'
+        getline(line2 + 1)->substitute('\s\+$', '', '')->setline(line2 + 1)
+    elseif dir == 'down'
+        getline(line1 - 1)->substitute('\s\+$', '', '')->setline(line1 - 1)
+    endif
 enddef
 
-def DuplicateLines(dir: string) #{{{2
+def DuplicateLines() #{{{2
     var reselect: string
     if dir == 'up'
         reselect = 'gv'
     elseif dir == 'down'
         reselect = "'[V']"
-    else
-        UpdateVisualMarks()
-        return
     endif
 
-    exe 'norm! gvyP' .. reselect
+    exe 'sil norm! gvyP' .. reselect
 enddef
 
-def DuplicateBlock(dir: string) #{{{2
-    var ve_save = &l:ve
-    try
-        setl ve=all
-        var line1: number
-        var fcol: number
-        var foff: number
-        var line2: number
-        var lcol: number
-        var loff: number
-        var left_col: number
-        var right_col: number
-        var _: any
-        [_, line1, fcol, foff] = getpos("'<")
-        [_, line2, lcol, loff] = getpos("'>")
-        [left_col, right_col] = sort([fcol + foff, lcol + loff], {i, j -> i - j})
-        if &selection == 'exclusive' && fcol + foff < lcol + loff
-            right_col -= 1
+def DuplicateBlock() #{{{2
+    var line1: number
+    var fcol: number
+    var foff: number
+    var line2: number
+    var lcol: number
+    var loff: number
+    var left_col: number
+    var right_col: number
+    var _: any
+    [_, line1, fcol, foff] = getpos("'<")
+    [_, line2, lcol, loff] = getpos("'>")
+    [left_col, right_col] = sort([fcol + foff, lcol + loff], {i, j -> i - j})
+    var numlines = (line2 - line1) + 1
+    var numcols = (right_col - left_col)
+
+    if dir == 'up' #{{{
+        if (line1 - numlines) < 1
+            # Insert enough lines to duplicate above
+            for i in range((numlines - line1) + 1)
+                append(0, '')
+            endfor
+            # Position of selection has changed
+            [_, line1, fcol, foff] = getpos("'<")
         endif
-        var numlines = (line2 - line1) + 1
-        var numcols = (right_col - left_col)
 
-        if dir == 'up' #{{{
-            if (line1 - numlines) < 1
-                # Insert enough lines to duplicate above
-                for i in range((numlines - line1) + 1)
-                    append(0, '')
-                endfor
-                # Position of selection has changed
-                [_, line1, fcol, foff] = getpos("'<")
-            endif
-
-            var set_cursor = "\<cmd>call getpos(\"'<\")[1:3]->cursor()\r" .. numlines .. 'k'
-            exe 'norm! gvy' .. set_cursor .. 'Pgv' #}}}
-        elseif dir == 'down' #{{{
-            if line2 + numlines >= line('$')
-                for i in ((line2 + numlines) - line('$'))->range()
-                    append('$', '')
-                endfor
-            endif
-            exe "norm! gvy'>j" .. left_col .. '|Pgv' #}}}
-        elseif dir == 'left' #{{{
-            if numcols > 0
-                exe 'norm! gvyP' .. numcols .. "l\<c-v>"
-                    .. (numcols + (&selection == 'exclusive' ? 1 : 0)) .. 'l'
-                    .. (numlines - 1) .. 'jo'
-            else
-                exe "norm! gvyP\<c-v>" .. (numlines - 1) .. 'jo'
-            endif #}}}
-        elseif dir == 'right' #{{{
-            norm! gvyPgv
+        var set_cursor = "\<cmd>call getpos(\"'<\")[1:3]->cursor()\r" .. numlines .. 'k'
+        exe 'norm! gvy' .. set_cursor .. 'Pgv' #}}}
+    elseif dir == 'down' #{{{
+        if line2 + numlines >= line('$')
+            for i in ((line2 + numlines) - line('$'))->range()
+                append('$', '')
+            endfor
+        endif
+        exe "norm! gvy'>j" .. left_col .. '|Pgv' #}}}
+    elseif dir == 'left' #{{{
+        if numcols > 0
+            exe 'norm! gvyP' .. numcols .. "l\<c-v>"
+                .. numcols .. 'l'
+                .. (numlines - 1) .. 'jo'
         else
-            UpdateVisualMarks()
+            exe "norm! gvyP\<c-v>" .. (numlines - 1) .. 'jo'
         endif #}}}
-    catch
-        Catch()
-    finally
-        &l:ve = ve_save
-    endtry
+    elseif dir == 'right' #{{{
+        norm! gvyPgv
+    endif #}}}
 enddef
 #}}}1
 # Util {{{1
-def UpdateVisualMarks() #{{{2
-    exe "norm! \egv"
+def Error(msg: string) #{{{2
+    echohl WarningMsg
+    echom '[movesel] ' .. msg
+    echohl NONE
 enddef
 
 def ShouldUndojoin(): bool #{{{2
