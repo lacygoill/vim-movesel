@@ -114,7 +114,7 @@ def MoveLines() #{{{2
         if line1 == 1
             append(line2, '')
         else
-            sil :*m'<-2
+            sil :*m '<-2
         endif #}}}
     elseif dir == 'down' #{{{
         # if the selection includes the very last line, we can't move it further
@@ -123,7 +123,7 @@ def MoveLines() #{{{2
         if line2 == line('$')
             append(line1 - 1, '')
         else
-            sil :*m'>+1
+            sil :*m '>+1
         endif #}}}
     elseif dir == 'right' #{{{
         for lnum in range(line1, line2)
