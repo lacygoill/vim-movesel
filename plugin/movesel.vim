@@ -1,9 +1,7 @@
-vim9script
+vim9script noclear
 
-if exists('g:loaded_movesel')
-    finish
-endif
-g:loaded_movesel = 1
+if exists('loaded') | finish | endif
+var loaded = true
 
 import MapMeta from 'lg/map.vim'
 

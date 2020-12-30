@@ -1,4 +1,7 @@
-vim9script
+vim9script noclear
+
+if exists('loaded') | finish | endif
+var loaded = true
 
 # TODO: Once  you've  completely refactored  this  plugin,  in our  vimrc,  move
 # `vim-movesel` from the section "To assimilate" to "Done".
@@ -349,7 +352,7 @@ def DuplicateBlock() #{{{2
     var _: any
     [_, line1, fcol, foff] = getpos("'<")
     [_, line2, lcol, loff] = getpos("'>")
-    [left_col, right_col] = sort([fcol + foff, lcol + loff], {i, j -> i - j})
+    [left_col, right_col] = sort([fcol + foff, lcol + loff], (i, j) => i - j)
     var numlines = (line2 - line1) + 1
     var numcols = (right_col - left_col)
 
@@ -363,7 +366,7 @@ def DuplicateBlock() #{{{2
             [_, line1, fcol, foff] = getpos("'<")
         endif
 
-        var set_cursor = "\<cmd>call getpos(\"'<\")[1:3]->cursor()\r" .. numlines .. 'k'
+        var set_cursor = "\<cmd>call getpos(\"'<\")[1 : 3]->cursor()\r" .. numlines .. 'k'
         exe 'norm! gvy' .. set_cursor .. 'Pgv' #}}}
     elseif dir == 'down' #{{{
         if line2 + numlines >= line('$')
