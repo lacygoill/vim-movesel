@@ -194,7 +194,7 @@ def MoveBlock() #{{{2
     elseif dir == 'right' #{{{
         var old_width = (getline('.') .. '  ')
             ->matchstr('\%' .. left_col .. 'c.*\%' .. right_col .. 'c.')
-            ->strchars(1)
+            ->strchars(true)
 
         # Original code:
         #
@@ -248,7 +248,7 @@ def MoveBlock() #{{{2
         [col1, col2] = sort([col("'<"), col("'>")], 'N')
         var new_width = getline('.')
             ->matchstr('\%' .. col1 .. 'c.*\%' .. col2 .. 'c.')
-            ->strchars(1)
+            ->strchars(true)
         if old_width > new_width
             exe 'norm! ' .. (old_width - new_width) .. 'l'
         endif
@@ -260,7 +260,7 @@ def MoveBlock() #{{{2
         [vcol1, vcol2] = sort([virtcol("'<"), virtcol("'>")], 'N')
         var old_width = (getline('.') .. '  ')
             ->matchstr('\%' .. vcol1 .. 'v.*\%' .. vcol2 .. 'v.')
-            ->strchars(1)
+            ->strchars(true)
         if left_col == 1
             exe "norm! gvA \e"
             if getline(line1, line2)->match('^\s') != -1
@@ -308,7 +308,7 @@ def MoveBlock() #{{{2
         [col1, col2] = [col("'<"), col("'>")]
         var new_width = getline('.')
             ->matchstr('\%' .. col1 .. 'c.*\%' .. col2 .. 'c.')
-            ->strchars(1)
+            ->strchars(true)
         if old_width > new_width
             exe 'norm! o' .. (old_width - new_width) .. 'ho'
         endif
