@@ -1,4 +1,4 @@
-vim9script noclear
+vim9 noclear
 
 if exists('loaded') | finish | endif
 var loaded = true
@@ -405,7 +405,7 @@ def ShouldUndojoin(): bool #{{{2
     # we haven't performed more than 1 change since the last time
     && get(b:, '_movesel_state', {})->get('seq_last') == (changenr() - 1)
     # we haven't changed the type of the visual mode
-    && get(b:, '_movesel_state', {})->get('mode_last') == mode
+    && get(b:, '_movesel_state', {})->get('mode_last', '') == mode
         return true
     endif
 
