@@ -51,8 +51,8 @@ def movesel#move(adir: string) #{{{2
 
     exe "norm! \e"
 
-    var ve_save = &ve
-    var fen_save = &l:fen
+    var ve_save: string = &ve
+    var fen_save: bool = &l:fen
 
     try
         set ve=all
@@ -65,6 +65,7 @@ def movesel#move(adir: string) #{{{2
         endif
     catch
         Catch()
+        return
     finally
         exe "norm! \e"
         &l:fen = fen_save
@@ -130,7 +131,7 @@ def MoveLines() #{{{2
         endif #}}}
     elseif dir == 'right' #{{{
         for lnum in range(line1, line2)
-            var line = getline(lnum)
+            var line: string = getline(lnum)
             if line != ''
                 setline(lnum, ' ' .. line)
             endif
@@ -192,7 +193,7 @@ def MoveBlock() #{{{2
         norm! gvxjPgvjojo
         #}}}
     elseif dir == 'right' #{{{
-        var old_width = (getline('.') .. '  ')
+        var old_width: number = (getline('.') .. '  ')
             ->matchstr('\%' .. left_col .. 'c.*\%' .. right_col .. 'c.')
             ->strchars(true)
 
@@ -246,7 +247,7 @@ def MoveBlock() #{{{2
         var col1: number
         var col2: number
         [col1, col2] = sort([col("'<"), col("'>")], 'N')
-        var new_width = getline('.')
+        var new_width: number = getline('.')
             ->matchstr('\%' .. col1 .. 'c.*\%' .. col2 .. 'c.')
             ->strchars(true)
         if old_width > new_width
@@ -258,7 +259,7 @@ def MoveBlock() #{{{2
         var vcol1: number
         var vcol2: number
         [vcol1, vcol2] = sort([virtcol("'<"), virtcol("'>")], 'N')
-        var old_width = (getline('.') .. '  ')
+        var old_width: number = (getline('.') .. '  ')
             ->matchstr('\%' .. vcol1 .. 'v.*\%' .. vcol2 .. 'v.')
             ->strchars(true)
         if left_col == 1
@@ -306,7 +307,7 @@ def MoveBlock() #{{{2
         var col1: number
         var col2: number
         [col1, col2] = [col("'<"), col("'>")]
-        var new_width = getline('.')
+        var new_width: number = getline('.')
             ->matchstr('\%' .. col1 .. 'c.*\%' .. col2 .. 'c.')
             ->strchars(true)
         if old_width > new_width
@@ -353,8 +354,8 @@ def DuplicateBlock() #{{{2
     [_, line1, fcol, foff] = getpos("'<")
     [_, line2, lcol, loff] = getpos("'>")
     [left_col, right_col] = sort([fcol + foff, lcol + loff], (i, j) => i - j)
-    var numlines = (line2 - line1) + 1
-    var numcols = (right_col - left_col)
+    var numlines: number = (line2 - line1) + 1
+    var numcols: number = (right_col - left_col)
 
     if dir == 'up' #{{{
         if (line1 - numlines) < 1
@@ -366,7 +367,7 @@ def DuplicateBlock() #{{{2
             [_, line1, fcol, foff] = getpos("'<")
         endif
 
-        var set_cursor = "\<cmd>call getpos(\"'<\")[1 : 3]->cursor()\r" .. numlines .. 'k'
+        var set_cursor: string = "\<cmd>call getpos(\"'<\")[1 : 3]->cursor()\r" .. numlines .. 'k'
         exe 'norm! gvy' .. set_cursor .. 'Pgv' #}}}
     elseif dir == 'down' #{{{
         if line2 + numlines >= line('$')
