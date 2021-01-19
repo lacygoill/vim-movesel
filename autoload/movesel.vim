@@ -89,6 +89,7 @@ def movesel#duplicate(adir: string) #{{{2
             DuplicateLines()
         else
             Error('Left and Right duplication not supported for lines')
+            return
         endif
     else
         # FIXME: Select a word (characterwise), and press `mdh`.
@@ -391,7 +392,7 @@ enddef
 #}}}1
 # Util {{{1
 def Error(msg: string) #{{{2
-    echohl WarningMsg
+    echohl ErrorMsg
     echom '[movesel] ' .. msg
     echohl NONE
 enddef
