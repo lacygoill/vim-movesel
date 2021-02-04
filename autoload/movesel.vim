@@ -265,9 +265,9 @@ def MoveBlock() #{{{2
             ->strchars(true)
         if left_col == 1
             exe "norm! gvA \e"
-            if getline(line1, line2)->match('^\s') != -1
+            if getline(line1, line2)->match('^\s') >= 0
                 for lnum in range(line1, line2)
-                    if getline(lnum)->match('^\s') != -1
+                    if getline(lnum)->match('^\s') >= 0
                         getline(lnum)->substitute('^\s', '', '')->setline(lnum)
                         exe 'norm! ' .. lnum .. 'G' .. right_col .. "|a \e"
                     endif
