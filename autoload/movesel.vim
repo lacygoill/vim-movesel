@@ -354,7 +354,10 @@ def DuplicateBlock() #{{{2
     var _: any
     [_, line1, fcol, foff] = getpos("'<")
     [_, line2, lcol, loff] = getpos("'>")
-    [left_col, right_col] = sort([fcol + foff, lcol + loff], (i, j) => i - j)
+    [left_col, right_col] = sort(
+        [fcol + foff, lcol + loff],
+        (i: number, j: number): number => i - j
+        )
     var numlines: number = (line2 - line1) + 1
     var numcols: number = (right_col - left_col)
 
