@@ -21,10 +21,10 @@ import MapMeta from 'lg/map.vim'
 # expand  the selection  and release  CTRL  a little  too late;  which leads  to
 # unexpected motions of text.
 #}}}
-sil! MapMeta('k', '<cmd>call movesel#move("up")<cr>', 'x', 'u')
-sil! MapMeta('j', '<cmd>call movesel#move("down")<cr>', 'x', 'u')
-sil! MapMeta('h', '<cmd>call movesel#move("left")<cr>', 'x', 'u')
-sil! MapMeta('l', '<cmd>call movesel#move("right")<cr>', 'x', 'u')
+MapMeta('k', '<cmd>call movesel#move("up")<cr>', 'x', 'u')
+MapMeta('j', '<cmd>call movesel#move("down")<cr>', 'x', 'u')
+MapMeta('h', '<cmd>call movesel#move("left")<cr>', 'x', 'u')
+MapMeta('l', '<cmd>call movesel#move("right")<cr>', 'x', 'u')
 
 # Duplication
 

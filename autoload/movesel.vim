@@ -38,11 +38,11 @@ var mode: string
 var dir: string
 
 # Interface {{{1
-def movesel#move(adir: string) #{{{2
+def movesel#move(arg_dir: string) #{{{2
 # TODO: Make work with a motion?
 # E.g.: `M-x }` moves the visual selection after the next paragraph.
 
-    [mode, dir] = [mode(), adir]
+    [mode, dir] = [mode(), arg_dir]
 
     if mode == 'v' && line('v') != line('.')
         Error('Cannot move characterwise selection when it''s multiline')
@@ -74,8 +74,8 @@ def movesel#move(adir: string) #{{{2
     endtry
 enddef
 
-def movesel#duplicate(adir: string) #{{{2
-    [mode, dir] = [mode(), adir]
+def movesel#duplicate(arg_dir: string) #{{{2
+    [mode, dir] = [mode(), arg_dir]
 
     if mode == 'v' && line('v') != line('.')
         Error('Cannot duplicate characterwise selection when it''s multiline')
